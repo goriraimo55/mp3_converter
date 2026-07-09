@@ -52,17 +52,6 @@ function toInt16(sample) {
   return clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
 }
 
-function concatFloat32(chunks) {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Float32Array(total);
-  let offset = 0;
-  chunks.forEach((chunk) => {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  });
-  return merged;
-}
-
 async function encodeToMp3(channelData, sampleRate, kbps, onProgress) {
   const numChannels = channelData.length;
   const encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, kbps);
@@ -108,6 +97,12 @@ async function decodeWithAudioContext(file) {
   }
 }
 
+function describeError(error) {
+  if (!error) return '不明なエラー';
+  const name = error.name && error.name !== 'Error' ? `${error.name}: ` : '';
+  return `${name}${error.message || error}`;
+}
+
 async function waitForMetadata(media) {
   if (Number.isFinite(media.duration) && media.duration > 0) return;
   await new Promise((resolve, reject) => {
@@ -116,14 +111,16 @@ async function waitForMetadata(media) {
   });
 }
 
-// 一括デコードできないファイル向けの保険: 動画を等倍速で再生しながらPCMを取り出す。
-async function captureWithPlayback(file, onProgress) {
+// 一括デコードできないファイル向けの保険: 動画を等倍速で再生しながらPCMを取り出し、
+// メモリに溜め込まずその場でMP3にエンコードしていく。
+async function captureWithPlayback(file, kbps, onProgress) {
   const url = URL.createObjectURL(file);
   const audioContext = new AudioContext();
   const media = document.createElement('video');
   media.src = url;
   media.playsInline = true;
   media.preload = 'auto';
+  let captureDone = false;
 
   try {
     await waitForMetadata(media);
@@ -132,20 +129,49 @@ async function captureWithPlayback(file, onProgress) {
     const silence = audioContext.createGain();
     silence.gain.value = 0;
 
-    const leftChunks = [];
-    const rightChunks = [];
+    const encoder = new lamejs.Mp3Encoder(2, audioContext.sampleRate, kbps);
+    const chunks = [];
+    const pending = [];
+    const leftInt = new Int16Array(4096);
+    const rightInt = new Int16Array(4096);
+
+    // 音声コールバックはコピーだけにして、重いエンコードは並行ループで消化する。
     processor.onaudioprocess = (event) => {
-      leftChunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
-      rightChunks.push(new Float32Array(event.inputBuffer.getChannelData(1)));
+      pending.push([
+        new Float32Array(event.inputBuffer.getChannelData(0)),
+        new Float32Array(event.inputBuffer.getChannelData(1)),
+      ]);
       onProgress(media.duration ? media.currentTime / media.duration : 0);
     };
+
+    const drain = (async () => {
+      while (!captureDone || pending.length) {
+        if (pending.length) {
+          const [left, right] = pending.shift();
+          for (let i = 0; i < left.length; i += 1) {
+            leftInt[i] = toInt16(left[i]);
+            rightInt[i] = toInt16(right[i]);
+          }
+          const encoded = encoder.encodeBuffer(leftInt.subarray(0, left.length), rightInt.subarray(0, left.length));
+          if (encoded.length) chunks.push(encoded);
+        }
+        await yieldToUi();
+      }
+    })();
 
     source.connect(processor);
     processor.connect(silence);
     silence.connect(audioContext.destination);
 
     await audioContext.resume();
-    await media.play();
+    try {
+      await media.play();
+    } catch (error) {
+      if (error && error.name === 'NotAllowedError') {
+        throw new Error('ブラウザに自動再生をブロックされました。ページ内を一度クリックしてから、もう一度「MP3に変換」を押してください。');
+      }
+      throw error;
+    }
     await new Promise((resolve, reject) => {
       media.onended = resolve;
       media.onerror = () => reject(new Error('再生中にエラーが発生しました。'));
@@ -153,8 +179,14 @@ async function captureWithPlayback(file, onProgress) {
 
     processor.disconnect();
     source.disconnect();
-    return { channelData: [concatFloat32(leftChunks), concatFloat32(rightChunks)], sampleRate: audioContext.sampleRate };
+    captureDone = true;
+    await drain;
+
+    const tail = encoder.flush();
+    if (tail.length) chunks.push(tail);
+    return new Blob(chunks, { type: 'audio/mpeg' });
   } finally {
+    captureDone = true;
     URL.revokeObjectURL(url);
     media.remove();
     await audioContext.close().catch(() => undefined);
@@ -170,27 +202,29 @@ async function convertFile(file, index, total) {
   const label = `${index + 1}/${total}: ${file.name}`;
   const fileProgress = (fraction) => setProgress(((index + Math.max(0, Math.min(1, fraction))) / total) * 100);
 
+  const name = file.name.replace(/\.(mp4|webm)$/i, '.mp3');
+  setStatus(`${label} の音声を読み込み中…（大きなファイルは数十秒かかることがあります）`);
+
   let decoded;
-  let captured = false;
-  setStatus(`${label} の音声を読み込み中…`);
   try {
     decoded = await decodeWithAudioContext(file);
     fileProgress(0.1);
-  } catch {
-    captured = true;
-    decoded = await captureWithPlayback(file, (fraction) => {
-      fileProgress(fraction * 0.7);
-      setStatus(`${label} の音声を取り込み中… ${Math.round(fraction * 100)}%`);
+  } catch (decodeError) {
+    // 一括デコードできない場合は等倍速の取り込みに切り替える（動画の長さと同じ時間がかかる）。
+    console.warn('一括デコードに失敗したため、等倍速の取り込みに切り替えます:', decodeError);
+    const blob = await captureWithPlayback(file, kbps, (fraction) => {
+      fileProgress(fraction);
+      setStatus(`${label} を等倍速で取り込み中… ${Math.round(fraction * 100)}%（一括デコードできないファイルのため、動画の長さと同じ時間がかかります）`);
     });
+    return { blob, name };
   }
 
-  const encodeStart = captured ? 0.7 : 0.1;
   const blob = await encodeToMp3(decoded.channelData, decoded.sampleRate, kbps, (fraction) => {
-    fileProgress(encodeStart + fraction * (1 - encodeStart));
+    fileProgress(0.1 + fraction * 0.9);
     setStatus(`${label} をMP3にエンコード中… ${Math.round(fraction * 100)}%`);
   });
 
-  return { blob, name: file.name.replace(/\.(mp4|webm)$/i, '.mp3') };
+  return { blob, name };
 }
 
 function addDownload(result) {
@@ -213,7 +247,7 @@ async function convertSelectedFiles() {
     setProgress(100);
     setStatus('変換が完了しました。ダウンロードリンクから保存してください。');
   } catch (error) {
-    setStatus(error.message, true);
+    setStatus(`変換に失敗しました: ${describeError(error)}`, true);
   } finally {
     convertButton.disabled = selectedFiles.length === 0;
   }
