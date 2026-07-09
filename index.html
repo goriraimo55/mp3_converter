@@ -45,11 +45,12 @@
       <h2>使い方と注意</h2>
       <ul>
         <li>このフォルダをそのまま保存し、<code>index.html</code> をブラウザで開くだけで使えます。</li>
-        <li>変換はブラウザ標準のデコード・録音機能を使うため、完全にオフラインで動作します。</li>
-        <li>お使いのブラウザが <code>audio/mpeg</code> の録音に対応していない場合は、対応ブラウザで開くよう案内します。</li>
+        <li>変換はブラウザ内のデコードと同梱のMP3エンコーダ（<a href="https://lame.sourceforge.net" rel="noreferrer">LAME</a> のJavaScript移植版 lamejs）で行うため、完全にオフラインで動作します。</li>
+        <li>Chrome / Edge / Firefox / Safari など、主要なブラウザでそのまま変換できます。</li>
       </ul>
     </section>
   </main>
+  <script src="vendor/lame.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
