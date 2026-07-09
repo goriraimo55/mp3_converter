@@ -1,0 +1,34 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #101827;
+  color: #eef4ff;
+}
+
+body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top left, #2657d8 0, transparent 35%), #101827; }
+.app-shell { width: min(920px, calc(100% - 32px)); margin: 0 auto; padding: 56px 0; }
+.hero, .converter, .notes { background: rgba(16, 24, 39, .82); border: 1px solid rgba(255,255,255,.14); border-radius: 28px; padding: 32px; box-shadow: 0 24px 70px rgba(0,0,0,.25); backdrop-filter: blur(16px); }
+.hero { margin-bottom: 20px; }
+.eyebrow { color: #9cc3ff; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+h1 { font-size: clamp(2.4rem, 6vw, 4.8rem); line-height: 1; margin: 8px 0 16px; }
+h2 { margin-top: 0; }
+.lead { color: #c8d5eb; font-size: 1.12rem; }
+.drop-zone { display: grid; gap: 10px; place-items: center; padding: 40px 20px; border: 2px dashed #6fa2ff; border-radius: 22px; cursor: pointer; text-align: center; background: rgba(111,162,255,.08); transition: transform .2s, background .2s; }
+.drop-zone.dragging, .drop-zone:hover { transform: translateY(-2px); background: rgba(111,162,255,.18); }
+.drop-zone input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
+.drop-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 999px; background: #6fa2ff; color: #081225; font-size: 2rem; font-weight: 900; }
+.settings { margin: 22px 0; display: flex; gap: 16px; align-items: center; }
+select, button { font: inherit; border-radius: 12px; border: 0; padding: 12px 16px; }
+select { margin-left: 8px; background: #eef4ff; color: #101827; }
+button { width: 100%; background: linear-gradient(135deg, #86efac, #67e8f9); color: #07111f; font-weight: 800; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+.status { margin-top: 18px; color: #dce8ff; min-height: 1.5em; }
+.status.error { color: #fca5a5; }
+.progress-wrap { height: 12px; margin: 16px 0; background: rgba(255,255,255,.12); border-radius: 999px; overflow: hidden; }
+.progress-bar { width: 0; height: 100%; background: linear-gradient(90deg, #86efac, #67e8f9); transition: width .2s; }
+.file-list { padding-left: 20px; color: #c8d5eb; }
+.results { display: grid; gap: 12px; }
+.download-link { display: block; padding: 14px 16px; border-radius: 14px; background: rgba(134,239,172,.16); color: #bbf7d0; text-decoration: none; font-weight: 700; }
+.notes { margin-top: 20px; color: #c8d5eb; }
+code { background: rgba(255,255,255,.12); padding: 2px 6px; border-radius: 6px; }
+@media (max-width: 640px) { .hero, .converter, .notes { padding: 22px; border-radius: 20px; } }
