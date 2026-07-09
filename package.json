@@ -1,0 +1,9 @@
+{
+  "name": "mp3-converter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build-free offline browser app for converting MP4/WebM audio to MP3 when the browser exposes an MP3 encoder.",
+  "scripts": {
+    "test": "node --check app.js && node --check scripts/smoke-test.js && node scripts/smoke-test.js"
+  }
+}
